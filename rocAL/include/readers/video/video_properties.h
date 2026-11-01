@@ -47,8 +47,8 @@ typedef struct Properties {
 
 void substring_extraction(std::string const &str, const char delim, std::vector<std::string> &out);
 
-// The two functions below are provided by the video adapter (or built-in FFmpeg code
-// when the adapter is disabled).  Core declares them here and calls them from the
+// The two functions below are provided by the video plugin (or built-in FFmpeg code
+// when the plugin is disabled).  Core declares them here and calls them from the
 // neutral video reader pipeline.
 void open_video_context(const char *video_file_path, Properties &props);
 void get_video_properties_from_txt_file(VideoProperties &video_props, const char *file_path, bool file_list_frame_num);

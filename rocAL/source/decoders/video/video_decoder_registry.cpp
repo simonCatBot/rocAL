@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 #include <map>
 #include <mutex>
+#include "decoders/video/video_plugin_loader.h"
 #include "pipeline/commons.h"
 
 namespace rocal {
@@ -51,11 +52,12 @@ void register_decoder_factory(DecoderType type, VideoDecoderFactory factory) {
 }
 
 std::shared_ptr<VideoDecoder> create_decoder(DecoderType type, DecoderConfig& cfg) {
+    ensure_video_plugin_loaded();
     std::lock_guard<std::mutex> lock(decoder_registry_mutex());
     auto it = decoder_registry().find(type);
     if (it == decoder_registry().end() || !it->second)
         THROW("No video decoder factory is registered for decoder type " + TOSTR(type) +
-              ". Link the rocal_video_ffmpeg adapter if video support is required.");
+              ". Link rocal_video_plugin if video support is required.");
     return it->second(cfg);
 }
 

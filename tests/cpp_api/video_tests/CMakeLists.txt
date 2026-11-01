@@ -66,6 +66,17 @@ else()
     link_directories(${ROCM_PATH}/lib/)
 endif()
 
+# When rocAL was built with ROCAL_VIDEO_PLUGIN=ON the video decoder factories live
+# in librocal_video_plugin.so. Link it when available.
+if(ROCAL_VIDEO_PLUGIN)
+    find_library(ROCAL_VIDEO_PLUGIN_LIBRARY NAMES rocal_video_plugin
+                 PATHS ${CMAKE_INSTALL_PREFIX}/lib ${ROCM_PATH}/lib
+                 NO_DEFAULT_PATH)
+    if(NOT ROCAL_VIDEO_PLUGIN_LIBRARY)
+        message(FATAL_ERROR "-- ${Red}video_tests: ROCAL_VIDEO_PLUGIN=ON but librocal_video_plugin.so was not found under ${CMAKE_INSTALL_PREFIX}/lib or ${ROCM_PATH}/lib${ColourReset}")
+    endif()
+endif()
+
 file(GLOB My_Source_Files ./*.cpp)
 add_executable(${PROJECT_NAME} ${My_Source_Files})
 
@@ -75,4 +86,4 @@ find_package(OpenCVComponents MODULE QUIET)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -mf16c -Wall ")
 # librocal carries Python C-API symbols (PythonFunction operator); link libpython to resolve them
 find_package(Python3 QUIET COMPONENTS Development.Embed)
-target_link_libraries(${PROJECT_NAME} rocal $<TARGET_NAME_IF_EXISTS:Python3::Python>)
+target_link_libraries(${PROJECT_NAME} rocal $<TARGET_NAME_IF_EXISTS:Python3::Python> ${ROCAL_VIDEO_PLUGIN_LIBRARY})

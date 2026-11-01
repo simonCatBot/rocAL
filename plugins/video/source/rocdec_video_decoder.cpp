@@ -21,7 +21,7 @@ THE SOFTWARE.
 */
 
 #include <iomanip>
-#include "rocal_video_ffmpeg/rocdec_video_decoder.h"
+#include "rocal_video_plugin/rocdec_video_decoder.h"
 
 #if ENABLE_HIP && ENABLE_ROCDECODE
 

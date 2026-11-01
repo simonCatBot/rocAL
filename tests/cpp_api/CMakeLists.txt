@@ -261,7 +261,7 @@ if("${BACKEND}" STREQUAL "HIP")
               --build-and-test "${CMAKE_CURRENT_SOURCE_DIR}/video_tests"
                                 "${CMAKE_CURRENT_BINARY_DIR}/video_tests"
               --build-generator "${CMAKE_GENERATOR}"
-              --build-options "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
+              --build-options "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}" "-DROCAL_VIDEO_PLUGIN=${ROCAL_VIDEO_PLUGIN}"
               --test-command "video_tests"
               ${ROCAL_TEST_DATA_PATH}/videos/AMD_driving_virtual_20.mp4
   )

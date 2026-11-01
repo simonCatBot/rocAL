@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#include "rocal_video_ffmpeg/ffmpeg_video_decoder.h"
+#include "rocal_video_plugin/ffmpeg_video_decoder.h"
 
 #include "pipeline/commons.h"
 #include <stdio.h>

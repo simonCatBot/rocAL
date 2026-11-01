@@ -22,11 +22,11 @@
 
 cmake_minimum_required(VERSION 3.10)
 
-project(rocal_video_ffmpeg LANGUAGES CXX)
+project(rocal_video_plugin LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(ROCAL_VIDEO_FFMPEG_ADAPTER_STATIC "Build rocal_video_ffmpeg as a static library" OFF)
+option(ROCAL_VIDEO_PLUGIN_STATIC "Build rocal_video_plugin as a static library" OFF)
 
 # ROCM Path
 if(DEFINED ENV{ROCM_PATH})
@@ -48,13 +48,13 @@ endif()
 # Detect whether we are building inside the full rocAL source tree or standalone
 # from the sources shipped with the rocAL dev package.
 if(EXISTS ${CMAKE_SOURCE_DIR}/rocAL/include)
-    set(ROCAL_VIDEO_FFMPEG_IN_TREE ON)
+    set(ROCAL_VIDEO_PLUGIN_IN_TREE ON)
 else()
-    set(ROCAL_VIDEO_FFMPEG_IN_TREE OFF)
+    set(ROCAL_VIDEO_PLUGIN_IN_TREE OFF)
 endif()
 
-if(ROCAL_VIDEO_FFMPEG_IN_TREE)
-    message("-- ${White}rocal_video_ffmpeg: building in-tree${ColourReset}")
+if(ROCAL_VIDEO_PLUGIN_IN_TREE)
+    message("-- ${White}rocal_video_plugin: building in-tree${ColourReset}")
     set(ROCAL_TARGET rocal)
     set(ROCAL_INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -67,13 +67,13 @@ if(ROCAL_VIDEO_FFMPEG_IN_TREE)
     endif()
     list(APPEND ROCAL_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/rocAL/include)
 else()
-    message("-- ${White}rocal_video_ffmpeg: building standalone from installed sources${ColourReset}")
+    message("-- ${White}rocal_video_plugin: building standalone from installed sources${ColourReset}")
     # Allow standalone builds to find rocAL's custom CMake modules (e.g. FindFFmpeg.cmake).
     list(APPEND CMAKE_MODULE_PATH ${ROCM_PATH}/share/rocal/cmake)
     # Find the installed rocAL library.
     find_library(ROCAL_LIBRARY NAMES rocal PATHS ${ROCM_PATH}/lib ${CMAKE_INSTALL_PREFIX}/lib)
     if(NOT ROCAL_LIBRARY)
-        message(FATAL_ERROR "-- ${Red}rocal_video_ffmpeg: rocAL library not found under ${ROCM_PATH}/lib or ${CMAKE_INSTALL_PREFIX}/lib${ColourReset}")
+        message(FATAL_ERROR "-- ${Red}rocal_video_plugin: rocAL library not found under ${ROCM_PATH}/lib or ${CMAKE_INSTALL_PREFIX}/lib${ColourReset}")
     endif()
     add_library(rocal_imported SHARED IMPORTED)
     set_target_properties(rocal_imported PROPERTIES IMPORTED_LOCATION ${ROCAL_LIBRARY})
@@ -81,7 +81,7 @@ else()
     # rocAL dev package install headers under <prefix>/include/rocal but internal
     # headers include each other with relative paths like "decoders/video/..." or
     # "readers/video/...". Add both the prefix and the rocal subdirectory so the
-    # adapter can find them without rewriting all include statements.
+    # plugin can find them without rewriting all include statements.
     set(ROCAL_INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${ROCM_PATH}/include
@@ -94,25 +94,25 @@ else()
     endif()
 endif()
 
-# FFmpeg is mandatory for the adapter.
+# FFmpeg is mandatory for the plugin.
 find_package(FFmpeg REQUIRED)
 
-# Detect HIP backend independently so the adapter can compile rocDecode support
+# Detect HIP backend independently so the plugin can compile rocDecode support
 # even though ENABLE_HIP is only a compile definition of the core target.
-set(ROCAL_VIDEO_FFMPEG_HIP OFF)
+set(ROCAL_VIDEO_PLUGIN_HIP OFF)
 if(GPU_SUPPORT AND "${BACKEND}" STREQUAL "HIP")
     find_package(HIP QUIET)
     if(HIP_FOUND)
-        set(ROCAL_VIDEO_FFMPEG_HIP ON)
+        set(ROCAL_VIDEO_PLUGIN_HIP ON)
     endif()
 endif()
 
 # rocDecode is optional and only required on HIP builds.
-set(ROCAL_VIDEO_FFMPEG_ROCDECODE OFF)
-if(ROCAL_VIDEO_FFMPEG_HIP)
+set(ROCAL_VIDEO_PLUGIN_ROCDECODE OFF)
+if(ROCAL_VIDEO_PLUGIN_HIP)
     find_package(rocdecode 1.0.0 QUIET)
     if(rocdecode_FOUND)
-        set(ROCAL_VIDEO_FFMPEG_ROCDECODE ON)
+        set(ROCAL_VIDEO_PLUGIN_ROCDECODE ON)
     endif()
 endif()
 
@@ -124,26 +124,33 @@ include_directories(
     ${AVFORMAT_INCLUDE_DIR}
 )
 
-set(ROCAL_VIDEO_FFMPEG_SOURCES
+set(ROCAL_VIDEO_PLUGIN_SOURCES
     source/register.cpp
     source/ffmpeg_video_decoder.cpp
     source/video_properties.cpp
 )
 
-if(ROCAL_VIDEO_FFMPEG_HIP AND ROCAL_VIDEO_FFMPEG_ROCDECODE)
-    list(APPEND ROCAL_VIDEO_FFMPEG_SOURCES source/rocdec_video_decoder.cpp)
+if(ROCAL_VIDEO_PLUGIN_HIP AND ROCAL_VIDEO_PLUGIN_ROCDECODE)
+    # Derive the rocDecode utility source tree from the package-provided include
+    # directory so it works with both flat and version-sliced ROCm installs.
+    get_filename_component(rocdecode_PREFIX_DIR "${rocdecode_INCLUDE_DIR}" DIRECTORY)
+    set(rocdecode_UTILS_DIR "${rocdecode_PREFIX_DIR}/share/rocdecode/utils")
+    set(rocdecode_ROCVIDEODECODE_DIR "${rocdecode_UTILS_DIR}/rocvideodecode")
+
+    list(APPEND ROCAL_VIDEO_PLUGIN_SOURCES source/rocdec_video_decoder.cpp)
+    list(APPEND ROCAL_VIDEO_PLUGIN_SOURCES ${rocdecode_ROCVIDEODECODE_DIR}/roc_video_dec.cpp)
     include_directories(
         ${ROCM_PATH}/include
         ${rocdecode_INCLUDE_DIR}
-        ${ROCM_PATH}/share/rocdecode/utils/rocvideodecode
-        ${ROCM_PATH}/share/rocdecode/utils
+        ${rocdecode_ROCVIDEODECODE_DIR}
+        ${rocdecode_UTILS_DIR}
     )
 endif()
 
-if(ROCAL_VIDEO_FFMPEG_ADAPTER_STATIC)
-    add_library(${PROJECT_NAME} STATIC ${ROCAL_VIDEO_FFMPEG_SOURCES})
+if(ROCAL_VIDEO_PLUGIN_STATIC)
+    add_library(${PROJECT_NAME} STATIC ${ROCAL_VIDEO_PLUGIN_SOURCES})
 else()
-    add_library(${PROJECT_NAME} SHARED ${ROCAL_VIDEO_FFMPEG_SOURCES})
+    add_library(${PROJECT_NAME} SHARED ${ROCAL_VIDEO_PLUGIN_SOURCES})
 endif()
 
 # FFMPEG multi-version support
@@ -154,9 +161,9 @@ else()
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ROCAL_VIDEO)
-if(ROCAL_VIDEO_FFMPEG_HIP)
+if(ROCAL_VIDEO_PLUGIN_HIP)
     target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_HIP=1 __HIP_PLATFORM_AMD__)
-    if(ROCAL_VIDEO_FFMPEG_ROCDECODE)
+    if(ROCAL_VIDEO_PLUGIN_ROCDECODE)
         target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_ROCDECODE)
     endif()
 else()
@@ -168,7 +175,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     ${FFMPEG_LIBRARIES}
 )
 
-if(ROCAL_VIDEO_FFMPEG_HIP AND ROCAL_VIDEO_FFMPEG_ROCDECODE)
+if(ROCAL_VIDEO_PLUGIN_HIP AND ROCAL_VIDEO_PLUGIN_ROCDECODE)
     target_link_libraries(${PROJECT_NAME} PUBLIC rocdecode::rocdecode)
 endif()
 
@@ -195,9 +202,9 @@ install(TARGETS ${PROJECT_NAME}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT dev NAMELINK_ONLY
 )
 
-# Install adapter sources under COMPONENT dev (issue comment #2).
+# Install plugin sources under COMPONENT dev (issue comment #2).
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/rocal/rocal_video_ffmpeg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/rocal/plugins/video
     COMPONENT dev
     FILES_MATCHING
     PATTERN "*.h"

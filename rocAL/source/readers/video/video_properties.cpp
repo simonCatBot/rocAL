@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include "readers/video/video_properties.h"
 
 #include <mutex>
+#include "decoders/video/video_plugin_loader.h"
 
 namespace {
 
@@ -68,22 +69,25 @@ void register_video_properties_functions(
 }
 
 void open_video_context(const char *video_file_path, Properties &props) {
+    rocal::video::ensure_video_plugin_loaded();
     std::lock_guard<std::mutex> lock(properties_registry_mutex());
     if (!properties_registry().open_video_context)
-        THROW("No video properties adapter is registered. Link rocal_video_ffmpeg if video support is required.");
+        THROW("No video properties plugin is registered. Link rocal_video_plugin if video support is required.");
     properties_registry().open_video_context(video_file_path, props);
 }
 
 void get_video_properties_from_txt_file(VideoProperties &video_props, const char *file_path, bool file_list_frame_num) {
+    rocal::video::ensure_video_plugin_loaded();
     std::lock_guard<std::mutex> lock(properties_registry_mutex());
     if (!properties_registry().get_video_properties_from_txt_file)
-        THROW("No video properties adapter is registered. Link rocal_video_ffmpeg if video support is required.");
+        THROW("No video properties plugin is registered. Link rocal_video_plugin if video support is required.");
     properties_registry().get_video_properties_from_txt_file(video_props, file_path, file_list_frame_num);
 }
 
 void find_video_properties(VideoProperties &video_props, const char *source_path, bool file_list_frame_num) {
+    rocal::video::ensure_video_plugin_loaded();
     std::lock_guard<std::mutex> lock(properties_registry_mutex());
     if (!properties_registry().find_video_properties)
-        THROW("No video properties adapter is registered. Link rocal_video_ffmpeg if video support is required.");
+        THROW("No video properties plugin is registered. Link rocal_video_plugin if video support is required.");
     properties_registry().find_video_properties(video_props, source_path, file_list_frame_num);
 }

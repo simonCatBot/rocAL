@@ -62,7 +62,7 @@ find_package(HALF QUIET)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads QUIET)
 # optional packages
-if(NOT ROCAL_VIDEO_FFMPEG_ADAPTER)
+if(NOT ROCAL_VIDEO_PLUGIN)
     find_package(FFmpeg QUIET)
 endif()
 find_package(SndFile QUIET)
@@ -229,11 +229,19 @@ if(${BUILD_ROCAL})
     # half
     include_directories(${HALF_INCLUDE_DIRS})
     #rocDecode
-    if ("${BACKEND}" STREQUAL "HIP" AND HIP_FOUND AND rocdecode_FOUND AND NOT ROCAL_VIDEO_FFMPEG_ADAPTER)
-        include_directories(${rocdecode_INCLUDE_DIR} ${ROCM_PATH}/share/rocdecode/utils/rocvideodecode)
-        include_directories(${ROCM_PATH}/share/rocdecode/utils)
-        set(LINK_LIBRARY_LIST ${LINK_LIBRARY_LIST} rocdecode::rocdecode)
-        set(rocdecode_SRCS ${ROCM_PATH}/share/rocdecode/utils/rocvideodecode/roc_video_dec.cpp)
+    if ("${BACKEND}" STREQUAL "HIP" AND HIP_FOUND AND rocdecode_FOUND)
+        # rocDecode utility kernels live under share/rocdecode/utils; the HIP object
+        # library needs their include path even when the decoder itself lives in the
+        # separate video plugin.
+        get_filename_component(rocdecode_PREFIX_DIR "${rocdecode_INCLUDE_DIR}" DIRECTORY)
+        set(rocdecode_UTILS_DIR "${rocdecode_PREFIX_DIR}/share/rocdecode/utils")
+        set(rocdecode_ROCVIDEODECODE_DIR "${rocdecode_UTILS_DIR}/rocvideodecode")
+        include_directories(${rocdecode_INCLUDE_DIR} ${rocdecode_ROCVIDEODECODE_DIR})
+        include_directories(${rocdecode_UTILS_DIR})
+        if(NOT ROCAL_VIDEO_PLUGIN)
+            set(LINK_LIBRARY_LIST ${LINK_LIBRARY_LIST} rocdecode::rocdecode)
+            set(rocdecode_SRCS ${rocdecode_ROCVIDEODECODE_DIR}/roc_video_dec.cpp)
+        endif()
     endif()
     # rocJPEG
     if("${BACKEND}" STREQUAL "HIP" AND HIP_FOUND AND rocjpeg_FOUND)
@@ -263,23 +271,23 @@ if(${BUILD_ROCAL})
     link_directories(${AMDRPP_LIBRARIES_DIRS} ${TurboJpeg_LIBRARIES_DIRS} ${PROTOBUF_LIBRARY_DIRS} /usr/local/lib/)
 
     file(GLOB_RECURSE SOURCES "source/*.cpp")
-    # Exclude FFmpeg-dependent decoder sources from core when using the adapter.
-    if(ROCAL_VIDEO_FFMPEG_ADAPTER)
+    # Exclude FFmpeg-dependent decoder sources from core when using the plugin.
+    if(ROCAL_VIDEO_PLUGIN)
         list(FILTER SOURCES EXCLUDE REGEX ".*/decoders/video/ffmpeg_video_decoder\\.cpp$")
         list(FILTER SOURCES EXCLUDE REGEX ".*/decoders/video/rocdec_video_decoder\\.cpp$")
     endif()
 
-    # In monolithic (default) mode, compile the adapter sources directly into
+    # In monolithic (default) mode, compile the plugin sources directly into
     # librocal.so so FFmpeg video support is part of the core library as before.
-    # The adapter headers are also needed by those sources.
-    if(NOT ROCAL_VIDEO_FFMPEG_ADAPTER AND FFMPEG_FOUND)
-        include_directories(${CMAKE_SOURCE_DIR}/rocal_video_ffmpeg/include)
+    # The plugin headers are also needed by those sources.
+    if(NOT ROCAL_VIDEO_PLUGIN AND FFMPEG_FOUND)
+        include_directories(${CMAKE_SOURCE_DIR}/plugins/video/include)
         list(APPEND SOURCES
-            ${CMAKE_SOURCE_DIR}/rocal_video_ffmpeg/source/register.cpp
-            ${CMAKE_SOURCE_DIR}/rocal_video_ffmpeg/source/ffmpeg_video_decoder.cpp
-            ${CMAKE_SOURCE_DIR}/rocal_video_ffmpeg/source/video_properties.cpp)
+            ${CMAKE_SOURCE_DIR}/plugins/video/source/register.cpp
+            ${CMAKE_SOURCE_DIR}/plugins/video/source/ffmpeg_video_decoder.cpp
+            ${CMAKE_SOURCE_DIR}/plugins/video/source/video_properties.cpp)
         if(rocdecode_FOUND AND "${BACKEND}" STREQUAL "HIP" AND HIP_FOUND)
-            list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/rocal_video_ffmpeg/source/rocdec_video_decoder.cpp)
+            list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/plugins/video/source/rocdec_video_decoder.cpp)
         endif()
     endif()
 
@@ -300,7 +308,7 @@ if(${BUILD_ROCAL})
             message("-- ${White}hipFile not found; rocAL will be built without hipFile GPU Direct I/O support for numpy reader (install hipFile and rebuild to enable)${ColourReset}")
         endif()
 
-        if(rocdecode_FOUND AND NOT ROCAL_VIDEO_FFMPEG_ADAPTER)
+        if(rocdecode_FOUND AND NOT ROCAL_VIDEO_PLUGIN)
             target_compile_definitions(${PROJECT_NAME} PUBLIC -DENABLE_ROCDECODE)
             message("-- ${White}rocAL built with rocDecode video decode capabilities${ColourReset}")
         endif()
@@ -315,6 +323,7 @@ if(${BUILD_ROCAL})
     endif()
 
     target_compile_definitions(${PROJECT_NAME} PUBLIC ENABLE_SIMD=1)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE "ROCM_PATH=\"${ROCM_PATH}\"")
     target_compile_definitions(${PROJECT_NAME} PUBLIC DBG_TIMING=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC DBGINFO=0)
     target_compile_definitions(${PROJECT_NAME} PUBLIC DBGLOG=0 WRNLOG=0)
@@ -322,8 +331,8 @@ if(${BUILD_ROCAL})
     message("-- ${White}rocAL built with ENABLE_SIMD")
 
     # FFMPEG
-    if(ROCAL_VIDEO_FFMPEG_ADAPTER)
-        message("-- ${White}rocAL built without FFmpeg in core; FFmpeg video support is in rocal_video_ffmpeg adapter${ColourReset}")
+    if(ROCAL_VIDEO_PLUGIN)
+        message("-- ${White}rocAL built without FFmpeg in core; FFmpeg video support is provided by the rocal_video_plugin runtime plugin${ColourReset}")
         target_compile_definitions(${PROJECT_NAME} PUBLIC -DROCAL_VIDEO)
     elseif(NOT FFMPEG_FOUND)
         message("-- ${Yellow}NOTE: rocAL built without FFmpeg video decode functionality${ColourReset}")
@@ -403,7 +412,7 @@ if(${BUILD_ROCAL})
     # -Wno-deprecated-declarations -- Do not warn about uses of functions, variables, and types marked as deprecated by using the deprecated attribute
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -mavx2 -mfma -mf16c -Wno-deprecated-declarations")
     message("-- ${White}rocAL -- CMAKE_CXX_FLAGS:${CMAKE_CXX_FLAGS}${ColourReset}")
-    target_link_libraries(${PROJECT_NAME} ${LINK_LIBRARY_LIST})
+    target_link_libraries(${PROJECT_NAME} ${LINK_LIBRARY_LIST} ${CMAKE_DL_LIBS})
     message("-- ${White}rocAL -- Link Libraries: ${LINK_LIBRARY_LIST}${ColourReset}")
 
     set_target_properties(rocal PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
@@ -424,7 +433,7 @@ if(${BUILD_ROCAL})
             include/api/rocal_api_meta_data.h
             include/api/rocal_api_tensor.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rocal COMPONENT dev)
-    # install internal rocAL headers so the optional FFmpeg adapter can be built
+    # install internal rocAL headers so the optional FFmpeg video plugin can be built
     # from installed sources on the target machine.
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rocal
